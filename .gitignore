@@ -1,0 +1,18 @@
+# ===== Node / 前端 =====
+node_modules/
+dist/
+*.log
+
+# ===== Rust / Tauri 构建产物 =====
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# ===== 本地配置与缓存 =====
+.claude/
+.DS_Store
+Thumbs.db
+*.local
+
+# 编辑器/IDE
+.vscode/
+.idea/

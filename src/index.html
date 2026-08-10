@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPTV Player</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+
+<body data-theme="dark">
+  <div class="app">
+    <!-- 顶部标题栏 -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">📺</span>
+        <h1>IPTV Player</h1>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-secondary" id="importFileBtn" title="从文件导入">
+          📁 文件导入
+        </button>
+        <button class="btn btn-secondary" id="importUrlBtn" title="从URL导入">
+          🔗 URL导入
+        </button>
+        <button class="btn btn-secondary" id="historyBtn" title="导入历史">
+          📜 导入历史
+        </button>
+        <button class="btn btn-icon" id="themeToggle" title="切换主题">
+          🌙
+        </button>
+      </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <!-- 左侧：分组 + 频道融合列表（点击分组项展开显示其频道，每组独立分页） -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-header-left">
+            <span class="sidebar-title">频道</span>
+            <span id="statusText"></span>
+          </div>
+          <span class="channel-count" id="totalCount">0 个频道</span>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="🔍 搜索频道..." />
+        </div>
+        <div class="group-list" id="groupList"></div>
+      </aside>
+
+      <!-- 右侧播放区域（占满父级高度） -->
+      <section class="player-section" id="playerSection">
+        <div class="player-placeholder" id="playerPlaceholder">
+          <div class="placeholder-icon">📺</div>
+          <p>选择一个频道开始播放</p>
+        </div>
+        <!-- 正在播放悬浮信息：视频顶部居中，显示分组 + 频道 -->
+        <div class="now-playing" id="nowPlaying" style="display: none;">
+          <span class="now-playing-groups" id="nowPlayingGroups"></span>
+          <span class="now-playing-title" id="nowPlayingTitle"></span>
+        </div>
+        <!-- 媒体类型标识：视频区域顶部右侧，与频道信息对齐 -->
+        <span class="media-badge" id="mediaBadge" style="display: none;"></span>
+        <video id="videoPlayer" class="video-player" controls playsinline></video>
+      </section>
+    </div>
+
+    <!-- URL导入弹窗 -->
+    <div class="modal-overlay" id="urlModal" style="display: none;">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>从 URL 导入播放列表</h3>
+          <button class="btn-close" id="closeUrlModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label">播放列表地址 (M3U / M3U8)</label>
+          <input type="text" class="form-input" id="urlInput" placeholder="https://***.m3u8" />
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelUrlBtn">取消</button>
+          <button class="btn btn-primary" id="confirmUrlBtn">导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 导入历史弹窗 -->
+    <div class="modal-overlay" id="historyModal" style="display: none;">
+      <div class="modal modal-lg">
+        <div class="modal-header">
+          <h3>导入历史</h3>
+          <button class="btn-close" id="closeHistoryModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- 导入历史操作状态提示（进行中/成功/失败） -->
+          <div class="history-status" id="historyStatus" style="display: none;"></div>
+          <div class="history-list" id="historyList"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="closeHistoryBtn">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+
+</html>
