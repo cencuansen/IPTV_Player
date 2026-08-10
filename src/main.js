@@ -9,8 +9,9 @@ const state = {
   pageSize: 10,         // 每个分组内每页显示的频道数
   currentChannel: null,
   hls: null,
-  sources: [], // 导入记录：[{ id, type: 'url'|'file', source, importedAt, channels: [] }]
+  sources: [], // 导入记录：[{ id, type: 'url'|'file', source, importedAt, channels: [], content }]
   playHistory: [], // 播放历史（最新在前，按 url 去重）
+  favorites: [], // 已收藏频道（最新在前，按 url 去重）
 }
 
 // ===== DOM 元素 =====
@@ -39,6 +40,55 @@ const elements = {
   historyStatus: document.getElementById('historyStatus'),
   closeHistoryModal: document.getElementById('closeHistoryModal'),
   closeHistoryBtn: document.getElementById('closeHistoryBtn'),
+  detailModal: document.getElementById('detailModal'),
+  detailStatus: document.getElementById('detailStatus'),
+  detailSource: document.getElementById('detailSource'),
+  detailContent: document.getElementById('detailContent'),
+  copySourceBtn: document.getElementById('copySourceBtn'),
+  copyContentBtn: document.getElementById('copyContentBtn'),
+  closeDetailModal: document.getElementById('closeDetailModal'),
+  closeDetailBtn: document.getElementById('closeDetailBtn'),
+}
+
+// ===== 剪贴板工具 =====
+// 复制文本到剪贴板：优先用 Clipboard API；不支持/被拒绝时回退到隐藏 textarea + execCommand
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch (err) { /* 回退到兜底方案 */ }
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.top = '0'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch (err) {
+    return false
+  }
+}
+
+// 给按钮绑定"复制"动作：成功后按钮短暂显示"已复制"，失败提示
+function bindCopyButton(btn, getText) {
+  btn.addEventListener('click', async () => {
+    const text = getText()
+    if (!text) return
+    const ok = await copyText(text)
+    const original = btn.textContent
+    btn.textContent = ok ? '已复制 ✓' : '复制失败'
+    btn.disabled = true
+    setTimeout(() => {
+      btn.textContent = original
+      btn.disabled = false
+    }, 1200)
+  })
 }
 
 // ===== 工具函数 =====
@@ -70,25 +120,72 @@ function getMediaType(url) {
 }
 
 // 按 hls.js 解析出的清单信息推断直播/视频。
-// 优先级：
-//  1) hls.js 计算好的 details.live === false（VOD 类型或带 #EXT-X-ENDLIST）→ 视频
-//  2) 清单声明 type === 'VOD'，或存在 #EXT-X-ENDLIST → 视频
-//  3) 存在超长整段片段（≥2 分钟，如整集/整部作为一个切片）→ 视频
-//  4) 其余（片段通常只有几秒）→ 直播
-function determineHlsType(details) {
+// 信号优先级：
+//  1) 清单带 #EXT-X-ENDLIST（details.live === false）或声明 PLAYLIST-TYPE:VOD → 视频（确定）
+//  2) 滑动窗口：连续两次清单媒体序列号（startSN/endSN）不同 → 直播（确定，需两次加载）
+//  3) 多数片段带 #EXT-X-PROGRAM-DATE-TIME（DVR/直播按墙上时间同步）→ 直播
+//  4) 时长兜底：总时长 ≥ 10 分钟且平均切片 ≥ 2 分钟（整部电影/整集拆成少量大切片）→ 视频；其余 → 直播
+// prevManifest 记录上一次清单的关键信息，用于滑动窗口检测
+function determineHlsType(details, prevManifest) {
   if (!details) return '直播'
-  if (details.live === false || details.type === 'VOD' || details.endedlist === true) return '视频'
-  let maxDur = 0
-  const fragments = details.fragments || []
-  for (const f of fragments) {
-    if (f && typeof f.duration === 'number' && f.duration > maxDur) maxDur = f.duration
+
+  // ① 明确的 VOD 信号：ENDLIST 或声明 VOD 类型
+  if (details.live === false || details.type === 'VOD') return '视频'
+
+  // ② 滑动窗口：媒体序列号前移 → 清单在持续更新，是直播
+  if (prevManifest &&
+    typeof details.startSN === 'number' &&
+    typeof prevManifest.startSN === 'number' &&
+    (details.startSN !== prevManifest.startSN ||
+      (typeof details.endSN === 'number' &&
+        typeof prevManifest.endSN === 'number' &&
+        details.endSN !== prevManifest.endSN))) {
+    return '直播'
   }
-  return maxDur >= 60 ? '视频' : '直播'
+
+  const fragments = details.fragments || []
+
+  // ③ 多数片段带 PROGRAM-DATE-TIME（DVR/直播常见，VOD 通常只有首片段有或无）
+  if (fragments.length) {
+    let pdt = 0
+    for (const f of fragments) {
+      if (f && f.programDateTime !== undefined && f.programDateTime !== null) pdt++
+    }
+    if (pdt / fragments.length > 0.5) return '直播'
+  }
+
+  // ④ 时长兜底：整段时长 + 平均切片都大 → 更像整部/整集点播
+  if (fragments.length) {
+    const total = details.totalduration ||
+      fragments.reduce((s, f) => s + (f.duration || 0), 0)
+    const avg = total / fragments.length
+    if (total >= 600 && avg >= 120) return '视频'
+  }
+
+  // 其余情况（通常为几秒切片、无 ENDLIST）→ 直播
+  return '直播'
+}
+
+// 是否已能仅凭当前清单给出确定性结论（后续类型不再变化）
+function isDefinitiveHlsType(details) {
+  return !!details && (details.live === false || details.type === 'VOD')
 }
 
 // .m3u8 清单加载后推断出的媒体类型；正常播放（video playing）后才用于显示徽标。
 // 播放前保持 null，确保未正常播放时徽标不显示。
 let pendingMediaType = null
+let mediaTypeManifest = null // 上一次清单的媒体序列号，用于滑动窗口（直播）检测
+let mediaTypeSettled = false // 是否已得到确定性结论（VOD 后不再变化）
+
+// 依据视频元素实际时长判断直播/视频（运行时最可靠的信号）：
+// 直播流的 media.duration 为 Infinity，原生控件不显示进度条（可拖动）；
+// 点播（VOD）时长有限，会显示进度条。据此可将 UI 表现直接映射为类型。
+function runtimeMediaType() {
+  const d = elements.videoPlayer.duration
+  if (Number.isFinite(d)) return '视频'
+  if (d === Infinity) return '直播'
+  return null // NaN / 尚未就绪
+}
 
 // 视频区域顶部右侧显示媒体类型徽标；无频道时隐藏。forcedType 用于 .m3u8
 // 在清单加载后覆盖初始判断（初始按 URL 推断为直播，再按片段时间纠正）。
@@ -251,6 +348,66 @@ function addToHistory(channel) {
   savePlayHistory()
 }
 
+// 从播放历史中删除单条记录
+function removeFromHistory(url) {
+  state.playHistory = state.playHistory.filter(c => c.url !== url)
+  savePlayHistory()
+  refreshGroupSection('播放历史')
+}
+
+// 清空播放历史
+function clearPlayHistory() {
+  state.playHistory = []
+  savePlayHistory()
+  refreshGroupSection('播放历史')
+}
+
+// ===== 已收藏持久化 =====
+const FAVORITES_KEY = 'iptv-favorites'
+
+function saveFavorites() {
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(state.favorites))
+  } catch (err) {
+  }
+}
+
+function loadFavorites() {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) state.favorites = parsed
+  } catch (err) {
+    state.favorites = []
+  }
+}
+
+function isFavorite(channel) {
+  return channel && channel.url &&
+    state.favorites.some(f => f.url === channel.url)
+}
+
+// 收藏/取消收藏：按 url 去重，新收藏放首位
+function toggleFavorite(channel) {
+  if (!channel || !channel.url) return
+  const idx = state.favorites.findIndex(f => f.url === channel.url)
+  if (idx > -1) {
+    state.favorites.splice(idx, 1)
+  } else {
+    state.favorites.unshift(channel)
+  }
+  saveFavorites()
+}
+
+// 清空全部收藏
+function clearFavorites() {
+  state.favorites = []
+  saveFavorites()
+  refreshGroupSection('已收藏')
+  updateFavoriteStars()
+}
+
 // 将记录置为“最新”：更新时间戳并移到列表末尾
 function touchSource(src) {
   src.importedAt = Date.now()
@@ -258,14 +415,16 @@ function touchSource(src) {
   state.sources.push(src)
 }
 
-// 新增或更新导入记录（同一 URL / 文件路径视为同一条记录）
-function upsertSource({ type, source, channels }) {
+// 新增或更新导入记录（同一 URL / 文件路径视为同一条记录）。
+// content 为原始 m3u 文本，用于"导入详情"展示；旧数据可能缺失，查看时再按需获取
+function upsertSource({ type, source, channels, content }) {
   const existing = state.sources.find(s => s.type === type && s.source === source)
   if (existing) {
     existing.channels = channels
+    if (content != null) existing.content = content
     touchSource(existing)
   } else {
-    state.sources.push({ id: makeId(), type, source, channels, importedAt: Date.now() })
+    state.sources.push({ id: makeId(), type, source, channels, content, importedAt: Date.now() })
   }
   saveSources()
 }
@@ -297,17 +456,16 @@ function showLatestSource() {
   }
 }
 
-// 重新获取某条导入记录的数据（URL 或文件），解析为频道列表
-async function fetchSourceChannels(src) {
+// 重新获取某条导入记录的原始内容（URL 或文件），返回 m3u 文本
+async function fetchSourceRaw(src) {
   if (src.type === 'url') {
     const { fetch } = window.__TAURI__.http
     const response = await fetch(src.source, { method: 'GET', connectTimeout: 30000 })
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
-    const content = await response.text()
-    return parseM3U(content)
+    return await response.text()
   }
   const { readTextFile } = window.__TAURI__.fs
-  return parseM3U(await readTextFile(src.source))
+  return await readTextFile(src.source)
 }
 
 // "应用"：直接显示本地已保存的数据；本地无数据时先获取再应用
@@ -326,13 +484,15 @@ async function applySource(id) {
 
   setStatus('获取数据...')
   try {
-    const channels = await fetchSourceChannels(src)
+    const content = await fetchSourceRaw(src)
+    const channels = parseM3U(content)
     if (channels.length === 0) {
       alert('未获取到有效频道数据')
       setStatus('暂无数据')
       return
     }
     src.channels = channels
+    src.content = content
     touchSource(src)
     saveSources()
     showLatestSource()
@@ -354,7 +514,8 @@ async function refreshSource(id) {
   renderHistory() // 重渲染以禁用弹窗内所有操作按钮
 
   try {
-    const channels = await fetchSourceChannels(src)
+    const content = await fetchSourceRaw(src)
+    const channels = parseM3U(content)
 
     if (channels.length === 0) {
       setHistoryStatus('数据未更新（未获取到有效频道）', 'error')
@@ -362,6 +523,7 @@ async function refreshSource(id) {
     }
 
     src.channels = channels
+    src.content = content
     touchSource(src)
     saveSources()
     showLatestSource()
@@ -411,11 +573,13 @@ function matchesSearch(ch, keyword) {
     channelGroups(ch).some(g => g.toLowerCase().includes(k))
 }
 
-// 获取某分组在当前搜索条件下的频道列表（"全部频道"为所有频道，"播放历史"取历史记录）
+// 获取某分组在当前搜索条件下的频道列表
+// （"全部频道"为所有频道，"播放历史"取历史记录，"已收藏"取收藏列表）
 function getGroupChannels(groupName) {
   let all
   if (groupName === '全部频道') all = state.channels
   else if (groupName === '播放历史') all = state.playHistory
+  else if (groupName === '已收藏') all = state.favorites
   else all = state.groupMap[groupName] || []
   if (!state.searchKeyword) return all
   return all.filter(ch => matchesSearch(ch, state.searchKeyword))
@@ -426,7 +590,9 @@ function renderGroups() {
   const container = elements.groupList
   container.innerHTML = ''
 
-  // "播放历史" 固定在最上方（最新播放的在最前）
+  // "已收藏" 固定在最上方（最新收藏的在最前）
+  renderGroupSection(container, '已收藏', getGroupChannels('已收藏'))
+  // "播放历史" 固定其后（最新播放的在最前）
   renderGroupSection(container, '播放历史', getGroupChannels('播放历史'))
 
   if (state.channels.length === 0) {
@@ -468,6 +634,16 @@ function renderGroupSection(container, groupName, channels) {
     <span class="group-name">${groupName}</span>
     <span class="group-count">${channels.length}</span>
   `
+  // "播放历史" 与 "已收藏" 提供一键清空
+  if (groupName === '播放历史' || groupName === '已收藏') {
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.className = 'clear-group-btn'
+    clearBtn.textContent = '清空'
+    clearBtn.title = `清空${groupName}`
+    clearBtn.dataset.group = groupName
+    header.appendChild(clearBtn)
+  }
   section.appendChild(header)
 
   if (expanded) {
@@ -493,7 +669,11 @@ function createGroupBody(groupName, channels) {
 
   const list = document.createElement('div')
   list.className = 'group-channels'
-  pageChannels.forEach(ch => list.appendChild(createChannelCard(ch)))
+  pageChannels.forEach(ch => {
+    const card = createChannelCard(ch)
+    if (groupName === '播放历史') addHistoryDeleteBtn(card, ch)
+    list.appendChild(card)
+  })
   body.appendChild(list)
 
   if (totalPages > 1) {
@@ -592,10 +772,52 @@ function createChannelCard(channel) {
   info.appendChild(name)
   info.appendChild(group)
 
+  // 收藏星标：点击切换收藏/取消收藏，不触发播放
+  const star = document.createElement('button')
+  star.type = 'button'
+  star.className = 'channel-star' + (isFavorite(channel) ? ' favorited' : '')
+  star.textContent = isFavorite(channel) ? '★' : '☆'
+  star.title = isFavorite(channel) ? '取消收藏' : '收藏'
+  star._channel = channel
+  star.addEventListener('click', (e) => {
+    e.stopPropagation()
+    toggleFavorite(channel)
+    updateFavoriteStars()
+    refreshGroupSection('已收藏')
+  })
+
   card.appendChild(img)
   card.appendChild(info)
+  card.appendChild(star)
 
   return card
+}
+
+// 播放历史卡片追加单条删除按钮（点击删除，不触发播放）
+function addHistoryDeleteBtn(card, channel) {
+  const del = document.createElement('button')
+  del.type = 'button'
+  del.className = 'channel-del'
+  del.textContent = '✕'
+  del.title = '从播放历史中删除'
+  del.addEventListener('click', (e) => {
+    e.stopPropagation()
+    removeFromHistory(channel.url)
+  })
+  card.appendChild(del)
+}
+
+// 同步所有频道卡片上的收藏星标状态（按 url 匹配，避免重建 DOM）
+function updateFavoriteStars() {
+  const stars = elements.groupList.querySelectorAll('.channel-star')
+  for (const star of stars) {
+    const ch = star._channel
+    if (!ch) continue
+    const fav = isFavorite(ch)
+    star.classList.toggle('favorited', fav)
+    star.textContent = fav ? '★' : '☆'
+    star.title = fav ? '取消收藏' : '收藏'
+  }
 }
 
 // 只更新当前播放卡片的 .playing 高亮，不重建 DOM（避免 logo 重新加载）
@@ -639,27 +861,31 @@ function goToGroupPage(groupName, page) {
   if (oldBody) section.replaceChild(body, oldBody)
 }
 
-// 播放后局部刷新"播放历史"分组（仅当该分组展开时重建其展开区，
-// 避免整体重绘导致其他分组 logo 重新加载）
-function refreshHistorySection(channel) {
-  const section = elements.groupList.querySelector('.group-section[data-group="播放历史"]')
+// 局部刷新某固定分组（"已收藏"/"播放历史"）：更新计数徽标，展开时重建展开区。
+// 避免整体重绘导致其他分组 logo 重新加载
+function refreshGroupSection(groupName) {
+  const section = elements.groupList.querySelector(`.group-section[data-group="${groupName}"]`)
   if (!section) return
-
-  // 始终更新计数徽标（考虑搜索过滤后的数量）
   const countEl = section.querySelector('.group-count')
-  if (countEl) countEl.textContent = getGroupChannels('播放历史').length
-
+  if (countEl) countEl.textContent = getGroupChannels(groupName).length
   if (!section.classList.contains('expanded')) return
-
-  // 若该频道本就是第 1 页首条（重复播放同一频道），无需重建
-  const list = section.querySelector('.group-channels')
-  const first = list && list.firstChild
-  if (first && first._channel && first._channel.url === channel.url) return
-
-  const body = createGroupBody('播放历史', getGroupChannels('播放历史'))
+  const body = createGroupBody(groupName, getGroupChannels(groupName))
   const oldBody = section.querySelector('.group-section-body')
   if (oldBody) section.replaceChild(body, oldBody)
   else section.appendChild(body)
+}
+
+// 播放后局部刷新"播放历史"分组（仅当该分组展开时重建其展开区）
+function refreshHistorySection(channel) {
+  const section = elements.groupList.querySelector('.group-section[data-group="播放历史"]')
+  if (!section) return
+  if (section.classList.contains('expanded')) {
+    // 若该频道本就是第 1 页首条（重复播放同一频道），无需重建
+    const list = section.querySelector('.group-channels')
+    const first = list && list.firstChild
+    if (first && first._channel && first._channel.url === channel.url) return
+  }
+  refreshGroupSection('播放历史')
 }
 
 // ===== HLS 加载器：通过 tauri-plugin-http（Rust 后端）请求，绕过浏览器 CORS =====
@@ -780,19 +1006,26 @@ function playChannel(channel) {
   const url = channel.url
 
   // 检查是否是 HLS 流
-  if (url.includes('.m3u8') && window.Hls && Hls.isSupported()) {
+  if (url.includes('.m3u') && window.Hls && Hls.isSupported()) {
     // 使用自定义加载器：经 Rust 后端请求，绕过浏览器 CORS
     state.hls = new Hls({ loader: TauriHttpLoader })
-    let mediaTypeSettled = false
-    // 清单加载后按片段时间推断直播/视频（仅一次）。只记录到 pendingMediaType，
-    // 待视频真正开始播放（playing）后才显示徽标。
+    // 直播/视频类型推断：每次清单加载都重新计算。滑动窗口出现（媒体序列号前移）
+    // 即可确认是直播；出现 ENDLIST / VOD 类型声明后不再变化。
+    // 只记录到 pendingMediaType，待视频真正开始播放（playing）后才显示徽标；
+    // 若徽标已显示（播放中），类型进一步确认后直接刷新。
     // hls.js 的 on() 回调只接收一个 data 参数，(event, data) 中 data 为 undefined，
     // 故用 data || event 兼容取到清单详情，避免推断失效。
     state.hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
       const info = data || event
       if (mediaTypeSettled || !info || !info.details) return
-      mediaTypeSettled = true
-      pendingMediaType = determineHlsType(info.details)
+      const details = info.details
+      pendingMediaType = determineHlsType(details, mediaTypeManifest)
+      mediaTypeManifest = { startSN: details.startSN, endSN: details.endSN }
+      if (isDefinitiveHlsType(details)) mediaTypeSettled = true
+      // 播放中已显示徽标时，若类型被进一步确认（如滑动窗口判定为直播），直接刷新
+      if (state.currentChannel && elements.mediaBadge.style.display !== 'none') {
+        showMediaBadge(state.currentChannel, pendingMediaType)
+      }
     })
     state.hls.loadSource(url)
     state.hls.attachMedia(video)
@@ -834,6 +1067,8 @@ function playChannel(channel) {
 
   showNowPlaying(channel) // 视频顶部悬浮显示分组 + 频道
   pendingMediaType = null // 重置类型推断，等待新频道正常播放
+  mediaTypeManifest = null // 重置滑动窗口检测
+  mediaTypeSettled = false // 重置确定性结论
   showMediaBadge(null) // 未正常播放前隐藏媒体类型徽标
   addToHistory(channel) // 记录播放历史（最新在前）
   refreshHistorySection(channel) // 局部刷新播放历史分组
@@ -865,7 +1100,7 @@ async function importFromFile() {
       return
     }
 
-    upsertSource({ type: 'file', source: selected, channels })
+    upsertSource({ type: 'file', source: selected, channels, content })
     showLatestSource()
   } catch (err) {
     setStatus(`加载失败`)
@@ -902,7 +1137,7 @@ async function importFromUrl() {
       return
     }
 
-    upsertSource({ type: 'url', source: url, channels })
+    upsertSource({ type: 'url', source: url, channels, content })
     showLatestSource()
   } catch (err) {
     setStatus(`导入失败`)
@@ -1005,6 +1240,13 @@ function renderHistory() {
     updateBtn.disabled = busy
     updateBtn.addEventListener('click', () => refreshSource(src.id))
 
+    const detailBtn = document.createElement('button')
+    detailBtn.className = 'btn btn-sm btn-secondary'
+    detailBtn.textContent = '详情'
+    detailBtn.title = '查看 m3u 路径/地址与文件内容'
+    detailBtn.disabled = busy
+    detailBtn.addEventListener('click', () => openSourceDetail(src.id))
+
     const removeBtn = document.createElement('button')
     removeBtn.className = 'btn btn-sm btn-danger'
     removeBtn.textContent = '删除'
@@ -1018,12 +1260,71 @@ function renderHistory() {
     actions.className = 'history-actions'
     actions.appendChild(applyBtn)
     actions.appendChild(updateBtn)
+    actions.appendChild(detailBtn)
     actions.appendChild(removeBtn)
 
     item.appendChild(info)
     item.appendChild(actions)
     elements.historyList.appendChild(item)
   })
+}
+
+// ===== 导入详情 =====
+let detailSourceId = null // 当前详情弹窗对应的导入记录 id（防止异步结果串台）
+let detailRawSource = ''  // 当前详情弹窗对应的原始路径/地址（供"复制路径"使用）
+
+// 弹窗内状态提示：text 为空则隐藏；kind ∈ loading | error
+function setDetailStatus(text, kind) {
+  const el = elements.detailStatus
+  if (!text) {
+    el.style.display = 'none'
+    el.textContent = ''
+    el.className = 'detail-status'
+    return
+  }
+  el.textContent = text
+  el.className = 'detail-status ' + (kind || 'loading')
+  el.style.display = 'flex'
+}
+
+// 打开详情：立即显示 m3u 路径/地址；文件内容本地缺失时再按需获取
+function openSourceDetail(id) {
+  const src = state.sources.find(s => s.id === id)
+  if (!src) return
+  detailSourceId = id
+  detailRawSource = src.source
+  elements.detailSource.textContent = decodeUrlForDisplay(src.source)
+  elements.detailSource.title = decodeUrlForDisplay(src.source)
+  elements.detailContent.textContent = ''
+  elements.detailModal.style.display = 'flex'
+
+  if (src.content) {
+    elements.detailContent.textContent = src.content
+    setDetailStatus('')
+  } else {
+    setDetailStatus('正在加载文件内容...', 'loading')
+    loadSourceContent(src)
+  }
+}
+
+// 按需获取导入记录的原始 m3u 内容（URL 重新请求 / 文件重新读取），并回写本地
+async function loadSourceContent(src) {
+  try {
+    const content = await fetchSourceRaw(src)
+    src.content = content
+    saveSources()
+    if (detailSourceId !== src.id) return // 期间已切换到其他记录
+    elements.detailContent.textContent = content
+    setDetailStatus('')
+  } catch (err) {
+    if (detailSourceId !== src.id) return
+    setDetailStatus('加载文件内容失败', 'error')
+  }
+}
+
+function closeDetailModal() {
+  elements.detailModal.style.display = 'none'
+  detailSourceId = null
 }
 
 // ===== 主题切换 =====
@@ -1080,8 +1381,18 @@ function bindEvents() {
     }, 300)
   })
 
-  // 分组列表点击委托：分组头展开/收起、频道卡片播放、分页按钮切页
+  // 分组列表点击委托：清空按钮、分组头展开/收起、频道卡片播放、分页按钮切页
   elements.groupList.addEventListener('click', (e) => {
+    const clearBtn = e.target.closest('.clear-group-btn')
+    if (clearBtn) {
+      const groupName = clearBtn.dataset.group
+      if (groupName === '播放历史') {
+        if (confirm('确定清空播放历史吗？')) clearPlayHistory()
+      } else if (groupName === '已收藏') {
+        if (confirm('确定清空全部收藏吗？')) clearFavorites()
+      }
+      return
+    }
     const header = e.target.closest('.group-section-header')
     if (header && header.parentElement) {
       toggleGroup(header.parentElement.dataset.group)
@@ -1117,14 +1428,36 @@ function bindEvents() {
     if (e.target === elements.historyModal) closeHistoryModal()
   })
 
+  // 导入详情
+  bindCopyButton(elements.copySourceBtn, () => detailRawSource)
+  bindCopyButton(elements.copyContentBtn, () => elements.detailContent.textContent)
+  elements.closeDetailModal.addEventListener('click', closeDetailModal)
+  elements.closeDetailBtn.addEventListener('click', closeDetailModal)
+  elements.detailModal.addEventListener('click', (e) => {
+    if (e.target === elements.detailModal) closeDetailModal()
+  })
+
   // 视频结束
   elements.videoPlayer.addEventListener('ended', () => {
     setStatus('播放结束')
   })
 
-  // 视频真正开始播放后才显示直播/视频徽标（播放失败/未播放时保持隐藏）
+  // 视频真正开始播放后才显示直播/视频徽标（播放失败/未播放时保持隐藏）。
+  // 以实际时长（duration）为准：有限时长 → 视频（有进度条），Infinity → 直播（无进度条）
   elements.videoPlayer.addEventListener('playing', () => {
-    if (state.currentChannel) {
+    if (!state.currentChannel) return
+    const t = runtimeMediaType()
+    if (t) pendingMediaType = t // 运行时信号优先于清单启发式推断
+    showMediaBadge(state.currentChannel, pendingMediaType)
+  })
+
+  // 时长变化（直播为 Infinity / 点播为有限值）时校正徽标：
+  // 播放中若媒体类型与当前徽标不符，直接刷新（无需等下一次 playing）
+  elements.videoPlayer.addEventListener('durationchange', () => {
+    const t = runtimeMediaType()
+    if (!t || !state.currentChannel) return
+    pendingMediaType = t
+    if (elements.mediaBadge.style.display !== 'none') {
       showMediaBadge(state.currentChannel, pendingMediaType)
     }
   })
@@ -1136,6 +1469,7 @@ function init() {
   bindEvents()
   loadPersistedSources()
   loadPlayHistory()
+  loadFavorites()
   showLatestSource()
 }
 

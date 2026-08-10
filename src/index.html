@@ -100,6 +100,32 @@
         </div>
       </div>
     </div>
+
+    <!-- 导入详情弹窗（查看某条导入记录的 m3u 路径/地址与文件内容） -->
+    <div class="modal-overlay" id="detailModal" style="display: none;">
+      <div class="modal modal-lg">
+        <div class="modal-header">
+          <h3>导入详情</h3>
+          <button class="btn-close" id="closeDetailModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-status" id="detailStatus" style="display: none;"></div>
+          <div class="detail-label-row">
+            <label class="form-label">M3U 路径 / 地址</label>
+            <button class="btn btn-sm btn-secondary" id="copySourceBtn">复制路径</button>
+          </div>
+          <div class="detail-source" id="detailSource"></div>
+          <div class="detail-label-row">
+            <label class="form-label">M3U 文件内容</label>
+            <button class="btn btn-sm btn-secondary" id="copyContentBtn">复制内容</button>
+          </div>
+          <pre class="detail-content" id="detailContent"></pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="closeDetailBtn">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="main.js"></script>

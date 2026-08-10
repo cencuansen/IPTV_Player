@@ -486,6 +486,76 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 频道收藏星标：默认隐藏，悬停卡片或已收藏时显示 */
+.channel-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: color 0.15s, transform 0.15s, opacity 0.15s;
+}
+
+.channel-card:hover .channel-star,
+.channel-star.favorited {
+  opacity: 1;
+}
+
+.channel-star:hover {
+  color: var(--warning);
+  transform: scale(1.2);
+}
+
+.channel-star.favorited {
+  color: var(--warning);
+}
+
+/* 播放历史单条删除按钮：默认隐藏，悬停卡片时显示 */
+.channel-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.channel-card:hover .channel-del {
+  opacity: 1;
+}
+
+.channel-del:hover {
+  color: var(--danger);
+  background-color: var(--bg-tertiary);
+}
+
+/* 分组头部清空按钮（播放历史 / 已收藏） */
+.clear-group-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.clear-group-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -709,6 +779,73 @@ body {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* ===== 导入详情 ===== */
+.detail-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.detail-status.loading {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.detail-status.error {
+  background-color: rgba(245, 101, 101, 0.15);
+  color: var(--danger);
+}
+
+/* 详情弹窗中标签 + 复制按钮一行 */
+.detail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detail-label-row .form-label {
+  margin-bottom: 0;
+}
+
+.detail-label-row .btn {
+  flex-shrink: 0;
+}
+
+.detail-source {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--text-primary);
+  user-select: text;
+}
+
+.detail-content {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
 }
 
 /* ===== 状态栏 ===== */
