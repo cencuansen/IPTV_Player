@@ -451,10 +451,10 @@ function renderGroups() {
 // 渲染单个分组节：头部（点击展开/收起）+ 展开时的频道列表与分页
 function renderGroupSection(container, groupName, channels) {
   const searching = !!state.searchKeyword
-  // 搜索时：无匹配的分组隐藏，有匹配的分组强制展开
+  // 搜索时：无匹配的分组隐藏；有匹配的分组默认折叠，由用户点击展开/收起
   if (searching && channels.length === 0) return
 
-  const expanded = state.expanded.has(groupName) || (searching && channels.length > 0)
+  const expanded = state.expanded.has(groupName)
 
   const section = document.createElement('div')
   section.className = 'group-section' + (expanded ? ' expanded' : '')
@@ -1055,12 +1055,27 @@ function bindEvents() {
   // 主题切换
   elements.themeToggle.addEventListener('click', toggleTheme)
 
-  // 搜索（全局过滤：匹配的分组强制展开，无匹配的分组隐藏）
+  // 搜索（无匹配的分组隐藏；有匹配的分组默认折叠，可手动展开/收起）
   let searchTimer
+  let preSearchExpanded = null
   elements.searchInput.addEventListener('input', (e) => {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(() => {
-      state.searchKeyword = e.target.value.trim()
+      const keyword = e.target.value.trim()
+      const prevKeyword = state.searchKeyword
+      state.searchKeyword = keyword
+
+      // 开始搜索：记录并清空展开状态（默认全部折叠）
+      if (!prevKeyword && keyword) {
+        preSearchExpanded = state.expanded
+        state.expanded = new Set()
+      }
+      // 清空搜索：恢复搜索前的展开状态
+      if (prevKeyword && !keyword) {
+        if (preSearchExpanded) state.expanded = preSearchExpanded
+        preSearchExpanded = null
+      }
+
       renderGroups()
     }, 300)
   })
