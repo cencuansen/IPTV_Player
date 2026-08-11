@@ -4,12 +4,13 @@
   "version": "1.0.0",
   "identifier": "com.iptv.player",
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
-    "frontendDist": "../src"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "IPTV Player",

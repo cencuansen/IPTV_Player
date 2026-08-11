@@ -1,0 +1,114 @@
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { useSourcesStore } from '../stores/sources'
+import { fetchSourceRaw } from '../utils/http'
+import { copyText } from '../utils/clipboard'
+import { decodeUrlForDisplay } from '../utils/storage'
+
+const props = defineProps({
+  open: Boolean,
+  sourceId: { type: String, default: null },
+})
+const emit = defineEmits(['update:open'])
+
+const sourcesStore = useSourcesStore()
+
+// 当前详情弹窗对应的导入记录 id（防止异步结果串台）与原始路径/地址（供"复制路径"使用）
+let detailSourceId = null
+const detailRawSource = ref('')
+const content = ref('')
+const status = ref({ text: '', kind: '' })
+
+// 复制按钮反馈
+const copiedKey = ref('') // '' | 'copied' | 'failed'
+let copyTimer = null
+
+const detailSourceDisplay = computed(() => decodeUrlForDisplay(detailRawSource.value))
+
+// 复制后按钮短暂显示"已复制 ✓"；失败显示"复制失败"
+function copyBtnText(base) {
+  if (!copiedKey.value) return base
+  return copiedKey.value === 'copied' ? '已复制 ✓' : '复制失败'
+}
+
+watch(() => props.open, (open) => {
+  if (!open) return
+  const src = sourcesStore.sources.find(s => s.id === props.sourceId)
+  if (!src) return
+  detailSourceId = src.id
+  detailRawSource.value = src.source
+  content.value = ''
+
+  if (src.content) {
+    content.value = src.content
+    setStatus('')
+  } else {
+    // 文件内容本地缺失时按需获取
+    setStatus('正在加载文件内容...', 'loading')
+    loadSourceContent(src)
+  }
+})
+
+// 弹窗内状态提示：text 为空则隐藏；kind ∈ loading | error
+function setStatus(text, kind) {
+  status.value = { text, kind }
+}
+
+async function loadSourceContent(src) {
+  try {
+    const raw = await fetchSourceRaw(src)
+    src.content = raw
+    if (detailSourceId !== src.id) return // 期间已切换到其他记录
+    content.value = raw
+    setStatus('')
+  } catch (err) {
+    if (detailSourceId !== src.id) return
+    setStatus('加载文件内容失败', 'error')
+  }
+}
+
+function close() {
+  emit('update:open', false)
+  detailSourceId = null
+}
+
+function onOverlayClick(e) {
+  if (e.target === e.currentTarget) close()
+}
+
+// 复制文本并短暂显示"已复制"反馈
+async function copy(key, text) {
+  if (!text) return
+  const ok = await copyText(text)
+  copiedKey.value = ok ? 'copied' : 'failed'
+  clearTimeout(copyTimer)
+  copyTimer = setTimeout(() => { copiedKey.value = '' }, 1200)
+}
+</script>
+
+<template>
+  <div v-if="open" class="modal-overlay" @click="onOverlayClick">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3>导入详情</h3>
+        <button class="btn-close" @click="close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="status.text" class="detail-status" :class="status.kind">{{ status.text }}</div>
+        <div class="detail-label-row">
+          <label class="form-label">M3U 路径 / 地址</label>
+          <button class="btn btn-sm btn-secondary" @click="copy('source', detailRawSource)">{{ copyBtnText('复制路径') }}</button>
+        </div>
+        <div class="detail-source" :title="detailSourceDisplay">{{ detailSourceDisplay }}</div>
+        <div class="detail-label-row">
+          <label class="form-label">M3U 文件内容</label>
+          <button class="btn btn-sm btn-secondary" @click="copy('content', content)">{{ copyBtnText('复制内容') }}</button>
+        </div>
+        <pre class="detail-content">{{ content }}</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="close">关闭</button>
+      </div>
+    </div>
+  </div>
+</template>
