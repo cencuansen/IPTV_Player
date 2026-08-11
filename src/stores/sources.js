@@ -14,6 +14,8 @@ export const useSourcesStore = defineStore('sources', () => {
   const sources = ref([])
   // 是否有导入记录正在更新中（更新期间禁用弹窗内所有操作按钮）
   const historyBusy = ref(false)
+  // 当前正在显示其频道的记录 id（不随"最新导入"走：应用任意一条记录后高亮跟随）
+  const currentSourceId = ref(null)
   // 弹窗内状态提示：text 为空则隐藏；kind ∈ loading | success | error
   const historyStatus = ref({ text: '', kind: null })
 
@@ -51,24 +53,32 @@ export const useSourcesStore = defineStore('sources', () => {
     historyStatus.value = { text, kind }
   }
 
-  // 仅显示最新一次导入的频道（不与历史记录混合）
-  function showLatestSource() {
+  // 显示指定导入记录的频道（数据切换后清空播放器悬浮信息与媒体类型标识）。
+  // 同时更新 currentSourceId，使导入历史中该记录保持高亮
+  function showSourceChannels(src) {
     const channelsStore = useChannelsStore()
     const playerStore = usePlayerStore()
-    channelsStore.setChannels(latestSource.value ? latestSource.value.channels : [])
-    playerStore.showNowPlaying(null) // 数据切换后清空悬浮信息
-    playerStore.showMediaBadge(null) // 隐藏媒体类型标识
+    currentSourceId.value = src ? src.id : null
+    channelsStore.setChannels(src ? src.channels : [])
+    playerStore.showNowPlaying(null)
+    playerStore.showMediaBadge(null)
   }
 
-  // "应用"：直接显示本地已保存的数据；本地无数据时先获取再应用
+  // 仅显示最新一次导入的频道（不与历史记录混合）
+  function showLatestSource() {
+    showSourceChannels(latestSource.value)
+  }
+
+  // "应用"：直接显示该条记录本地已保存的数据。
+  // 仅展示，不改变记录在导入历史中的顺序（也不更新时间戳）；
+  // 本地无数据时先获取再应用
   async function applySource(id) {
     if (historyBusy.value) return // 更新期间禁用
     const src = sources.value.find(s => s.id === id)
     if (!src) return
 
     if (src.channels && src.channels.length > 0) {
-      touchSource(src)
-      showLatestSource()
+      showSourceChannels(src)
       return
     }
 
@@ -81,8 +91,7 @@ export const useSourcesStore = defineStore('sources', () => {
       }
       src.channels = channels
       src.content = content
-      touchSource(src)
-      showLatestSource()
+      showSourceChannels(src)
     } catch (err) {
       // 加载失败
     }
@@ -168,7 +177,7 @@ export const useSourcesStore = defineStore('sources', () => {
   }
 
   return {
-    sources, historyBusy, historyStatus, latestSource,
+    sources, historyBusy, historyStatus, latestSource, currentSourceId,
     upsertSource, setHistoryStatus, showLatestSource,
     applySource, refreshSource, removeSource, importFromUrl, importFromFile,
   }

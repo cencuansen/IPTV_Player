@@ -4,7 +4,7 @@ import { usePlayerStore } from '../stores/player'
 import { useFavoritesStore } from '../stores/favorites'
 import { usePlayHistoryStore } from '../stores/playHistory'
 import { channelGroups } from '../utils/m3u'
-import { getRealLogoUrl, DEFAULT_LOGO } from '../utils/logo'
+import { getRealLogoUrl, probeLogo, DEFAULT_LOGO } from '../utils/logo'
 
 const props = defineProps({
   channel: { type: Object, required: true },
@@ -21,18 +21,29 @@ const isPlaying = computed(() =>
   props.channel.url === playerStore.currentChannel.url)
 const isFav = computed(() => favoritesStore.isFavorite(props.channel))
 
-// Logo：始终显示，加载失败时回退到默认占位图
-// 若为中转地址，先尝试其真实目标地址；失败再退回原始地址，再失败用默认图
+// Logo：始终先显示默认占位图，真实 logo 预加载成功后才替换，避免破图/闪烁
+// 候选依次为真实目标地址（中转时提取）→ 原始地址；任一加载成功即替换，全部失败保持占位图
+// 探测经 probeLogo 模块级缓存去重：同一 URL 会话内只请求一次，组件重建/多卡片引用不再重复请求
+const logoUrl = ref(DEFAULT_LOGO)
 const realLogo = getRealLogoUrl(props.channel.logo || '')
-const logoUrl = ref(realLogo || DEFAULT_LOGO)
-let logoFallback = 0
-function onLogoError() {
-  logoFallback++
-  if (props.channel.logo && logoFallback === 1 && realLogo !== props.channel.logo) {
-    logoUrl.value = props.channel.logo
-  } else {
-    logoUrl.value = DEFAULT_LOGO
+const logoCandidates = []
+if (realLogo) logoCandidates.push(realLogo)
+if (props.channel.logo && props.channel.logo !== realLogo) {
+  logoCandidates.push(props.channel.logo)
+}
+
+async function resolveLogo() {
+  for (const url of logoCandidates) {
+    if (await probeLogo(url)) { logoUrl.value = url; return }
   }
+  // 全部失败：保持默认占位图
+}
+
+if (logoCandidates.length) resolveLogo()
+
+// 保险兜底：替换后的真实 logo 若仍渲染失败，回到默认占位图
+function onLogoError() {
+  logoUrl.value = DEFAULT_LOGO
 }
 
 function play() {

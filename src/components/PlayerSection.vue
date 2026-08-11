@@ -25,12 +25,6 @@ onMounted(() => {
       <p>选择一个频道开始播放</p>
     </div>
 
-    <!-- 媒体类型标识：视频区域顶部右侧，与频道信息对齐 -->
-    <span v-if="playerStore.badgeVisible" class="media-badge"
-      :class="playerStore.badgeIsLive ? 'live' : 'vod'">
-      {{ playerStore.badgeText }}
-    </span>
-
     <!-- 正在播放悬浮信息：视频顶部居中，显示分组 + 频道 -->
     <div v-if="playerStore.nowPlayingVisible" class="now-playing">
       <span class="now-playing-groups">{{ groupsText }}</span>
@@ -39,10 +33,8 @@ onMounted(() => {
       </span>
     </div>
 
-    <video ref="videoEl" class="video-player" :class="{ active: !!playerStore.currentChannel }"
-      controls playsinline
-      @playing="playerStore.onVideoPlaying()"
-      @durationchange="playerStore.onVideoDurationChange()"
+    <video ref="videoEl" class="video-player" :class="{ active: !!playerStore.currentChannel }" controls playsinline
+      @playing="playerStore.onVideoPlaying()" @durationchange="playerStore.onVideoDurationChange()"
       @ended="playerStore.onVideoEnded()"></video>
   </section>
 </template>
