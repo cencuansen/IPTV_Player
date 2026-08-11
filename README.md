@@ -149,4 +149,4 @@ https://example.com/stream.m3u8
 
 ## 许可证
 
-本项目尚未指定开源许可证，保留所有权利。
+本项目采用 [MIT 许可证](LICENSE) 开源。
