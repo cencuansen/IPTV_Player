@@ -26,7 +26,18 @@ export const useFavoritesStore = defineStore('favorites', () => {
     favorites.value = []
   }
 
-  return { favorites, isFavorite, toggle, clear }
+  // 拖拽排序：将 from 处的收藏移动到 to 位置（含越界钳制）
+  function move(from, to) {
+    const list = favorites.value
+    if (from < 0 || from >= list.length) return
+    if (to < 0) to = 0
+    if (to >= list.length) to = list.length - 1
+    if (from === to) return
+    const [item] = list.splice(from, 1)
+    list.splice(to, 0, item)
+  }
+
+  return { favorites, isFavorite, toggle, clear, move }
 }, {
   persist: { key: 'iptv-favorites', pick: ['favorites'] },
 })

@@ -56,3 +56,24 @@ export function channelGroups(ch) {
   const split = splitGroups(ch.group || '未分组')
   return split.length ? split : ['未分组']
 }
+
+// ===== M3U 序列化器 =====
+// 将频道列表序列化为 m3u/m3u8 文本（保留 tvg-logo 与 group-title，便于重新导入）
+export function buildM3U(channels) {
+  const lines = ['#EXTM3U']
+  for (const ch of channels) {
+    if (!ch || !ch.url) continue
+    const attrs = []
+    if (ch.logo) attrs.push(`tvg-logo="${escapeAttr(ch.logo)}"`)
+    attrs.push(`group-title="${escapeAttr(channelGroups(ch).join(','))}"`)
+    const name = (ch.name || '未知频道').replace(/[\r\n]+/g, ' ').trim()
+    lines.push(`#EXTINF:-1 ${attrs.join(' ')},${name}`)
+    lines.push(ch.url)
+  }
+  return lines.join('\n')
+}
+
+// m3u 属性值不允许包含引号（解析时按 " 切分），这里替换为单引号
+function escapeAttr(v) {
+  return String(v).replace(/"/g, "'")
+}
