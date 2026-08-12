@@ -35,6 +35,6 @@ onMounted(() => {
 
     <video ref="videoEl" class="video-player" :class="{ active: !!playerStore.currentChannel }" controls playsinline
       @playing="playerStore.onVideoPlaying()" @durationchange="playerStore.onVideoDurationChange()"
-      @ended="playerStore.onVideoEnded()"></video>
+      @ended="playerStore.onVideoEnded()" @error="playerStore.onVideoError()"></video>
   </section>
 </template>

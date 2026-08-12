@@ -4,6 +4,7 @@ import Hls from 'hls.js'
 import TauriHttpLoader from '../player/TauriHttpLoader'
 import { getMediaType, determineHlsType, isDefinitiveHlsType, runtimeMediaType } from '../utils/mediaType'
 import { usePlayHistoryStore } from './playHistory'
+import { useFailedChannelsStore } from './failedChannels'
 
 // 播放状态：当前频道 + HLS 生命周期 + 媒体类型徽标推断（不持久化）
 export const usePlayerStore = defineStore('player', () => {
@@ -46,6 +47,11 @@ export const usePlayerStore = defineStore('player', () => {
       hls.destroy()
       hls = null
     }
+  }
+
+  // 记录当前频道播放失败（持久化）：清单加载失败、致命解码错误、原生流加载失败等
+  function markPlaybackFailed() {
+    if (currentChannel.value) useFailedChannelsStore().markFailed(currentChannel.value)
   }
 
   // 视频顶部悬浮显示当前播放信息；无频道时隐藏（不清 currentChannel）
@@ -105,6 +111,7 @@ export const usePlayerStore = defineStore('player', () => {
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
         el.play().catch(() => {
           destroyHls()
+          markPlaybackFailed()
         })
       })
       instance.on(Hls.Events.ERROR, (event, data) => {
@@ -119,19 +126,21 @@ export const usePlayerStore = defineStore('player', () => {
             detail === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
             detail === Hls.ErrorDetails.MANIFEST_PARSING_ERROR)) {
           setStatus('加载失败')
+          markPlaybackFailed()
           // 兜底：个别"假 .m3u8"实为可直接播放的流（无需 CORS）
           destroyHls()
           return
         }
 
         setStatus('播放失败')
+        markPlaybackFailed()
       })
       instance.loadSource(url)
       instance.attachMedia(el)
     } else {
       // 原生支持
       el.src = url
-      el.play()
+      el.play().catch(() => markPlaybackFailed())
     }
 
     showNowPlaying(channel) // 视频顶部悬浮显示分组 + 频道
@@ -144,9 +153,16 @@ export const usePlayerStore = defineStore('player', () => {
   // 以实际时长（duration）为准：有限时长 → 视频（有进度条），Infinity → 直播（无进度条）
   function onVideoPlaying() {
     if (!currentChannel.value) return
+    // 成功播放即清除持久化失败标记（自愈）：同一频道恢复可用后不再标红
+    useFailedChannelsStore().markPlayed(currentChannel.value)
     const t = runtimeMediaType(videoEl)
     if (t) pendingMediaType = t // 运行时信号优先于清单启发式推断
     showMediaBadge(currentChannel.value, pendingMediaType)
+  }
+
+  // 原生流 / 已附加媒体的解码错误：同样记录持久化失败（hls.js 自有错误处理已单独标记）
+  function onVideoError() {
+    markPlaybackFailed()
   }
 
   // 时长变化（直播为 Infinity / 点播为有限值）时校正徽标：
@@ -168,7 +184,7 @@ export const usePlayerStore = defineStore('player', () => {
     currentChannel, status, nowPlayingVisible,
     badgeVisible, badgeText, badgeIsLive,
     setVideoElement, setStatus, playChannel,
-    onVideoPlaying, onVideoDurationChange, onVideoEnded,
+    onVideoPlaying, onVideoDurationChange, onVideoEnded, onVideoError,
     showNowPlaying, showMediaBadge, resetMediaType,
   }
 })

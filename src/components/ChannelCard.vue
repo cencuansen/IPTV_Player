@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { usePlayerStore } from '../stores/player'
 import { useFavoritesStore } from '../stores/favorites'
 import { usePlayHistoryStore } from '../stores/playHistory'
+import { useFailedChannelsStore } from '../stores/failedChannels'
 import { channelGroups } from '../utils/m3u'
 import { getRealLogoUrl, probeLogo, DEFAULT_LOGO } from '../utils/logo'
 
@@ -14,12 +15,16 @@ const props = defineProps({
 const playerStore = usePlayerStore()
 const favoritesStore = useFavoritesStore()
 const playHistoryStore = usePlayHistoryStore()
+const failedChannelsStore = useFailedChannelsStore()
 
 const groupsText = computed(() => channelGroups(props.channel).join(' · '))
 const isPlaying = computed(() =>
   playerStore.currentChannel && props.channel &&
   props.channel.url === playerStore.currentChannel.url)
 const isFav = computed(() => favoritesStore.isFavorite(props.channel))
+// 最近播放失败过的频道：名称以暗红色标识，鼠标悬停提示
+const isFailed = computed(() => failedChannelsStore.isFailed(props.channel))
+const nameTitle = computed(() => isFailed.value ? `${props.channel.name}（上次播放失败）` : props.channel.name)
 
 // Logo：始终先显示默认占位图，真实 logo 预加载成功后才替换，避免破图/闪烁
 // 候选依次为真实目标地址（中转时提取）→ 原始地址；任一加载成功即替换，全部失败保持占位图
@@ -65,7 +70,7 @@ function removeFromHistory() {
     <img class="channel-logo" alt="" loading="lazy" referrerpolicy="no-referrer"
       :src="logoUrl" @error="onLogoError" />
     <div class="channel-info">
-      <div class="channel-name" :title="channel.name">{{ channel.name }}</div>
+      <div class="channel-name" :class="{ failed: isFailed }" :title="nameTitle">{{ channel.name }}</div>
       <div class="channel-group">{{ groupsText }}</div>
     </div>
     <!-- 收藏星标：点击切换收藏/取消收藏，不触发播放 -->

@@ -13,6 +13,7 @@
   --border: #2d3748;
   --success: #48bb78;
   --danger: #f56565;
+  --danger-dark: #c0392b; /* 播放失败频道名称的暗红标识 */
   --warning: #ed8936;
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   --radius: 8px;
@@ -476,6 +477,11 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 最近播放失败的频道：名称以暗红色标识 */
+.channel-name.failed {
+  color: var(--danger-dark);
 }
 
 .channel-group {
