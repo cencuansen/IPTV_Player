@@ -20,8 +20,10 @@ function openDetail(sourceId) {
 }
 
 onMounted(() => {
-  // 初始化：加载持久化数据并显示最新导入的频道
-  sourcesStore.showLatestSource()
+  // 初始化：优先恢复上次应用的导入记录；无匹配记录（如首次运行）再显示最新导入的频道
+  if (!sourcesStore.restoreCurrentSource()) {
+    sourcesStore.showLatestSource()
+  }
 })
 </script>
 

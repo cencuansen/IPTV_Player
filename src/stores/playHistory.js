@@ -1,11 +1,14 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { useFailedChannelsStore } from './failedChannels'
 
 const PLAY_HISTORY_MAX = 100
 
 // 播放历史（最新在前，按 url 去重）
 export const usePlayHistoryStore = defineStore('playHistory', () => {
   const playHistory = ref([])
+  // "仅有效"过滤开关：只显示未播放失败的频道（会话级状态，不持久化）
+  const onlyValid = ref(false)
 
   // 记录播放历史：按 url 去重，最新播放放首位，超出上限时截断
   function add(channel) {
@@ -27,7 +30,19 @@ export const usePlayHistoryStore = defineStore('playHistory', () => {
     playHistory.value = []
   }
 
-  return { playHistory, add, remove, clear }
+  // 切换"仅有效"过滤
+  function toggleOnlyValid() {
+    onlyValid.value = !onlyValid.value
+  }
+
+  // 清除播放历史中的无效频道（播放失败的记录）
+  function clearInvalid() {
+    const failedSet = new Set(useFailedChannelsStore().failedChannels.map(f => f.url))
+    if (!failedSet.size) return
+    playHistory.value = playHistory.value.filter(c => !failedSet.has(c.url))
+  }
+
+  return { playHistory, onlyValid, add, remove, clear, toggleOnlyValid, clearInvalid }
 }, {
   persist: { key: 'iptv-play-history', pick: ['playHistory'] },
 })

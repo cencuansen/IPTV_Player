@@ -44,6 +44,17 @@ function onClearClick() {
   }
 }
 
+// ===== 播放历史："仅有效" / "清除无效" =====
+const historyOnlyValid = computed(() => playHistoryStore.onlyValid)
+
+function onToggleOnlyValid() {
+  playHistoryStore.toggleOnlyValid()
+}
+
+function onClearInvalid() {
+  if (confirm('确定清除播放历史中的无效频道吗？')) playHistoryStore.clearInvalid()
+}
+
 // ===== 已收藏：全部导出 =====
 async function onExportAll() {
   const list = favoritesStore.favorites
@@ -105,18 +116,24 @@ function resetDrag() {
       <span class="group-caret">{{ expanded ? '▾' : '▸' }}</span>
       <span class="group-name">{{ groupName }}</span>
       <span class="group-count">{{ channels.length }}</span>
-      <!-- "已收藏" 提供全部导出（导出全部收藏为一个 m3u8 文件） -->
-      <button v-if="isFavorites" type="button" class="export-group-btn" title="导出全部收藏为 m3u8 文件"
-        @click.stop="onExportAll">
-        导出
-      </button>
-      <!-- "播放历史" 与 "已收藏" 提供一键清空 -->
-      <button v-if="isFixed" type="button" class="clear-group-btn" :title="`清空${groupName}`" @click.stop="onClearClick">
-        清空
-      </button>
     </div>
 
     <div v-if="expanded" class="group-section-body">
+      <!-- 折叠面板内顶部操作栏：已收藏（导出/清空）；播放历史（仅有效/清除无效/清空） -->
+      <div v-if="isFixed" class="group-toolbar">
+        <template v-if="isFavorites">
+          <button type="button" class="btn btn-sm btn-secondary" title="导出全部收藏为 m3u8 文件"
+            @click="onExportAll">导出</button>
+          <button type="button" class="btn btn-sm btn-danger" title="清空全部收藏" @click="onClearClick">清空</button>
+        </template>
+        <template v-else>
+          <button type="button" class="btn btn-sm" :class="historyOnlyValid ? 'btn-primary' : 'btn-secondary'"
+            title="仅显示未播放失败的频道" @click="onToggleOnlyValid">仅有效</button>
+          <button type="button" class="btn btn-sm btn-secondary" title="从播放历史中移除播放失败的频道"
+            @click="onClearInvalid">清除无效</button>
+          <button type="button" class="btn btn-sm btn-danger" title="清空播放历史" @click="onClearClick">清空</button>
+        </template>
+      </div>
       <div class="group-channels">
         <ChannelCard v-for="(ch, i) in pageChannels" :key="ch.url + '_' + i" :channel="ch"
           :show-delete="groupName === '播放历史'" :draggable="canDrag" :class="{

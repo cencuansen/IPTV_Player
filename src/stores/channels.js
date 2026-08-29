@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { channelGroups } from '../utils/m3u'
 import { usePlayHistoryStore } from './playHistory'
 import { useFavoritesStore } from './favorites'
+import { useFailedChannelsStore } from './failedChannels'
 
 // 频道列表与分组状态（不持久化：expanded 为 Set 无法序列化，且每次导入都重置）
 export const useChannelsStore = defineStore('channels', () => {
@@ -43,10 +44,18 @@ export const useChannelsStore = defineStore('channels', () => {
 
   // 获取某分组在当前搜索条件下的频道列表
   // （"全部频道"为所有频道，"播放历史"取历史记录，"已收藏"取收藏列表）
+  // "播放历史"开启"仅有效"时隐藏播放失败的频道
   function getGroupChannels(groupName) {
     let all
     if (groupName === '全部频道') all = channels.value
-    else if (groupName === '播放历史') all = usePlayHistoryStore().playHistory
+    else if (groupName === '播放历史') {
+      const historyStore = usePlayHistoryStore()
+      all = historyStore.playHistory
+      if (historyStore.onlyValid) {
+        const failedSet = new Set(useFailedChannelsStore().failedChannels.map(f => f.url))
+        if (failedSet.size) all = all.filter(ch => !failedSet.has(ch.url))
+      }
+    }
     else if (groupName === '已收藏') all = useFavoritesStore().favorites
     else all = groupMap.value[groupName] || []
     if (!searchKeyword.value) return all

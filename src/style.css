@@ -13,7 +13,8 @@
   --border: #2d3748;
   --success: #48bb78;
   --danger: #f56565;
-  --danger-dark: #c0392b; /* 播放失败频道名称的暗红标识 */
+  --danger-dark: #c0392b;
+  /* 播放失败频道名称的暗红标识 */
   --warning: #ed8936;
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   --radius: 8px;
@@ -298,6 +299,15 @@ body {
   background-color: var(--bg-primary);
 }
 
+/* 折叠面板内顶部操作栏（已收藏 / 播放历史） */
+.group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 0 8px;
+}
+
 .group-channels {
   display: flex;
   flex-direction: column;
@@ -400,7 +410,8 @@ body {
 /* ===== 媒体类型标识（直播/视频）：顶部右侧，与频道信息对齐 ===== */
 .media-badge {
   position: absolute;
-  top: 12px; /* 与 .now-playing 顶对齐 */
+  top: 12px;
+  /* 与 .now-playing 顶对齐 */
   right: 12px;
   z-index: 10;
   display: inline-flex;
@@ -542,42 +553,6 @@ body {
 .channel-del:hover {
   color: var(--danger);
   background-color: var(--bg-tertiary);
-}
-
-/* 分组头部清空按钮（播放历史 / 已收藏） */
-.clear-group-btn {
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--text-muted);
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.clear-group-btn:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-/* 分组头部导出按钮（已收藏） */
-.export-group-btn {
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--text-muted);
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.export-group-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
 }
 
 /* 已收藏拖拽排序反馈 */

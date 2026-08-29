@@ -69,6 +69,17 @@ export const useSourcesStore = defineStore('sources', () => {
     showSourceChannels(latestSource.value)
   }
 
+  // 启动时恢复上次应用的导入记录：找到匹配 currentSourceId 的记录并复用"应用"逻辑
+  // （本地有频道数据则直接展示，无则异步获取后展示）；无匹配记录时返回 false，
+  // 由调用方回退到"最新导入"。
+  function restoreCurrentSource() {
+    if (!currentSourceId.value) return false
+    const src = sources.value.find(s => s.id === currentSourceId.value)
+    if (!src) return false
+    applySource(src.id)
+    return true
+  }
+
   // "应用"：直接显示该条记录本地已保存的数据。
   // 仅展示，不改变记录在导入历史中的顺序（也不更新时间戳）；
   // 本地无数据时先获取再应用
@@ -178,9 +189,10 @@ export const useSourcesStore = defineStore('sources', () => {
 
   return {
     sources, historyBusy, historyStatus, latestSource, currentSourceId,
-    upsertSource, setHistoryStatus, showLatestSource,
+    upsertSource, setHistoryStatus, showLatestSource, restoreCurrentSource,
     applySource, refreshSource, removeSource, importFromUrl, importFromFile,
   }
 }, {
-  persist: { key: 'iptv-sources', pick: ['sources'] },
+  // currentSourceId 一并持久化：重启后可按上次应用的记录恢复频道
+  persist: { key: 'iptv-sources', pick: ['sources', 'currentSourceId'] },
 })
