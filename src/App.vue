@@ -7,8 +7,10 @@ import UrlImportModal from './components/UrlImportModal.vue'
 import HistoryModal from './components/HistoryModal.vue'
 import SourceDetailModal from './components/SourceDetailModal.vue'
 import { useSourcesStore } from './stores/sources'
+import { useChannelsStore } from './stores/channels'
 
 const sourcesStore = useSourcesStore()
+const channelsStore = useChannelsStore()
 
 // 弹窗开关状态（组件局部，不占 store）
 const urlModalOpen = ref(false)
@@ -24,6 +26,8 @@ onMounted(() => {
   if (!sourcesStore.restoreCurrentSource()) {
     sourcesStore.showLatestSource()
   }
+  // 启动时所有分组（含"全部频道"）默认折叠
+  channelsStore.collapseAll()
 })
 </script>
 

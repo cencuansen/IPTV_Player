@@ -10,6 +10,10 @@ import { getRealLogoUrl, probeLogo, DEFAULT_LOGO } from '../utils/logo'
 const props = defineProps({
   channel: { type: Object, required: true },
   showDelete: { type: Boolean, default: false },
+  // 是否显示收藏按钮（"播放历史"分组内隐藏，避免与其他分组重复操作）
+  showFavorite: { type: Boolean, default: true },
+  // 在"播放历史"分组内播放：不把该频道提到历史列表最前
+  keepHistoryOrder: { type: Boolean, default: false },
 })
 
 const playerStore = usePlayerStore()
@@ -18,6 +22,10 @@ const playHistoryStore = usePlayHistoryStore()
 const failedChannelsStore = useFailedChannelsStore()
 
 const groupsText = computed(() => channelGroups(props.channel).join(' · '))
+// 频道所属的导入记录 id（本次更新前导入的数据由启动迁移补齐，可能为空）
+const sourceId = computed(() => props.channel.sourceId || '')
+// 路径形式展示：导入记录 id / 频道分组（无来源 id 时仅显示分组）
+const pathText = computed(() => sourceId.value ? `${sourceId.value}/${groupsText.value}` : groupsText.value)
 const isPlaying = computed(() =>
   playerStore.currentChannel && props.channel &&
   props.channel.url === playerStore.currentChannel.url)
@@ -52,7 +60,7 @@ function onLogoError() {
 }
 
 function play() {
-  playerStore.playChannel(props.channel)
+  playerStore.playChannel(props.channel, { keepHistoryOrder: props.keepHistoryOrder })
 }
 
 function toggleFav() {
@@ -71,10 +79,17 @@ function removeFromHistory() {
       :src="logoUrl" @error="onLogoError" />
     <div class="channel-info">
       <div class="channel-name" :class="{ failed: isFailed }" :title="nameTitle">{{ channel.name }}</div>
-      <div class="channel-group">{{ groupsText }}</div>
+      <!-- 来源导入记录 id 以路径形式与频道分组一起显示：id/频道分组 -->
+      <div class="channel-path" :title="pathText">
+        <template v-if="sourceId">
+          <span class="channel-source">{{ sourceId }}</span>
+          <span class="channel-path-sep">/</span>
+        </template>
+        <span class="channel-group">{{ groupsText }}</span>
+      </div>
     </div>
     <!-- 收藏星标：点击切换收藏/取消收藏，不触发播放 -->
-    <button type="button" class="channel-star" :class="{ favorited: isFav }"
+    <button v-if="showFavorite" type="button" class="channel-star" :class="{ favorited: isFav }"
       :title="isFav ? '取消收藏' : '收藏'" @click.stop="toggleFav">
       {{ isFav ? '★' : '☆' }}
     </button>

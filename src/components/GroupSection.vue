@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeTextFile } from '@tauri-apps/plugin-fs'
 import { useChannelsStore } from '../stores/channels'
+import { usePlayerStore } from '../stores/player'
 import { usePlayHistoryStore } from '../stores/playHistory'
 import { useFavoritesStore } from '../stores/favorites'
 import { buildM3U } from '../utils/m3u'
@@ -13,11 +14,18 @@ import GroupPagination from './GroupPagination.vue'
 const props = defineProps({ groupName: String })
 
 const channelsStore = useChannelsStore()
+const playerStore = usePlayerStore()
 const playHistoryStore = usePlayHistoryStore()
 const favoritesStore = useFavoritesStore()
 
 // 当前搜索条件下的频道列表
 const channels = computed(() => channelsStore.getGroupChannels(props.groupName))
+// 正在播放的频道是否属于本分组（用于高亮分组头部与卡片）
+const isPlayingGroup = computed(() => {
+  const current = playerStore.currentChannel
+  if (!current) return false
+  return channels.value.some(ch => ch.url === current.url)
+})
 const totalPages = computed(() => Math.max(1, Math.ceil(channels.value.length / channelsStore.pageSize)))
 // 页码越界时钳制到有效范围
 const page = computed(() => {
@@ -27,6 +35,13 @@ const page = computed(() => {
 const pageChannels = computed(() => {
   const start = (page.value - 1) * channelsStore.pageSize
   return channels.value.slice(start, start + channelsStore.pageSize)
+})
+// 多页分组中，最后一页可能不满一页：用"最后一张卡片的隐形副本"补满整页高度，
+// 保证切换页码时高度稳定不跳动；只有一页时按实际条目显示，不做占位
+const lastPageChannel = computed(() => pageChannels.value[pageChannels.value.length - 1] || null)
+const placeholderCount = computed(() => {
+  if (totalPages.value <= 1) return 0
+  return Math.max(0, channelsStore.pageSize - pageChannels.value.length)
 })
 const expanded = computed(() => channelsStore.expanded.has(props.groupName))
 const isFixed = computed(() => props.groupName === '播放历史' || props.groupName === '已收藏')
@@ -111,7 +126,7 @@ function resetDrag() {
 </script>
 
 <template>
-  <div class="group-section" :class="{ expanded }">
+  <div class="group-section" :class="{ expanded, playing: isPlayingGroup }">
     <div class="group-section-header" :title="groupName" @click="onHeaderClick">
       <span class="group-caret">{{ expanded ? '▾' : '▸' }}</span>
       <span class="group-name">{{ groupName }}</span>
@@ -136,11 +151,19 @@ function resetDrag() {
       </div>
       <div class="group-channels">
         <ChannelCard v-for="(ch, i) in pageChannels" :key="ch.url + '_' + i" :channel="ch"
-          :show-delete="groupName === '播放历史'" :draggable="canDrag" :class="{
+          :show-delete="groupName === '播放历史'" :show-favorite="groupName !== '播放历史'"
+          :keep-history-order="groupName === '播放历史'"
+          :draggable="canDrag" :class="{
             'drag-source': dragIndex === i,
             'drag-target': dragIndex !== null && dragIndex !== i && dropIndex === i,
           }" @dragstart="onCardDragStart(i, $event)" @dragover="onCardDragOver(i, $event)"
           @drop="onCardDrop(i, $event)" @dragend="resetDrag" />
+        <!-- 隐形地复制最后一张卡片补满整页：与真实卡片完全同高，肉眼不可见 -->
+        <template v-if="lastPageChannel">
+          <ChannelCard v-for="n in placeholderCount" :key="'placeholder-' + n" :channel="lastPageChannel"
+            :show-delete="groupName === '播放历史'" :show-favorite="groupName !== '播放历史'"
+            class="channel-card-placeholder" aria-hidden="true" />
+        </template>
       </div>
       <GroupPagination v-if="totalPages > 1" :group-name="groupName" :page="page" :total-pages="totalPages" />
     </div>

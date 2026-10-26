@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import { useChannelsStore } from '../stores/channels'
 
 const props = defineProps({
@@ -10,30 +9,25 @@ const props = defineProps({
 
 const channelsStore = useChannelsStore()
 
-// 窗口化页码（最多显示 5 个，当前页居中）
-const visiblePages = computed(() => {
-  const maxVisible = 5
-  let startPage = Math.max(1, props.page - Math.floor(maxVisible / 2))
-  let endPage = Math.min(props.totalPages, startPage + maxVisible - 1)
-  if (endPage - startPage < maxVisible - 1) {
-    startPage = Math.max(1, endPage - maxVisible + 1)
-  }
-  const pages = []
-  for (let i = startPage; i <= endPage; i++) pages.push(i)
-  return pages
-})
-
 function go(page) {
-  if (page < 1 || page > props.totalPages) return
-  channelsStore.goToGroupPage(props.groupName, page)
+  const target = Number(page)
+  if (!Number.isFinite(target) || target < 1 || target > props.totalPages) return
+  channelsStore.goToGroupPage(props.groupName, target)
 }
 </script>
 
 <template>
   <div class="group-pagination">
-    <button type="button" class="btn btn-sm" :disabled="page <= 1" @click="go(page - 1)">‹</button>
-    <span v-for="i in visiblePages" :key="i" class="page-btn"
-      :class="{ active: i === page }" @click="go(i)">{{ i }}</span>
-    <button type="button" class="btn btn-sm" :disabled="page >= totalPages" @click="go(page + 1)">›</button>
+    <button type="button" class="btn btn-sm page-arrow" :disabled="page <= 1" title="上一页"
+      @click="go(page - 1)">‹</button>
+    <button type="button" class="btn btn-sm" :disabled="page <= 1" title="首页" @click="go(1)">1</button>
+    <!-- 下拉框：直接选择任意页 -->
+    <select class="page-select" :value="page" title="选择页码" @change="go($event.target.value)">
+      <option v-for="p in totalPages" :key="p" :value="p">{{ p }}</option>
+    </select>
+    <button type="button" class="btn btn-sm" :disabled="page >= totalPages" title="尾页"
+      @click="go(totalPages)">{{ totalPages }}</button>
+    <button type="button" class="btn btn-sm page-arrow" :disabled="page >= totalPages" title="下一页"
+      @click="go(page + 1)">›</button>
   </div>
 </template>

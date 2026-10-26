@@ -43,8 +43,8 @@ function submit() {
         <button class="btn-close" @click="close">✕</button>
       </div>
       <div class="modal-body">
-        <label class="form-label">播放列表地址 (M3U / M3U8)</label>
-        <input ref="inputEl" type="text" class="form-input" placeholder="https://***.m3u8"
+        <label class="form-label">播放列表地址 (M3U / M3U8 / TXT)</label>
+        <input ref="inputEl" type="text" class="form-input" placeholder="https://***.m3u8 或 https://***.txt"
           v-model="url" @keydown.enter="submit" />
       </div>
       <div class="modal-footer">

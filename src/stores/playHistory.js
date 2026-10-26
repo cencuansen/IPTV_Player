@@ -10,11 +10,19 @@ export const usePlayHistoryStore = defineStore('playHistory', () => {
   // "仅有效"过滤开关：只显示未播放失败的频道（会话级状态，不持久化）
   const onlyValid = ref(false)
 
-  // 记录播放历史：按 url 去重，最新播放放首位，超出上限时截断
-  function add(channel) {
+  // 记录播放历史：按 url 去重，最新播放放首位，超出上限时截断。
+  // keepOrder：在"播放历史"分组内播放时保持原有顺序，仅就地更新该条目
+  function add(channel, { keepOrder = false } = {}) {
     if (!channel || !channel.url) return
-    playHistory.value = playHistory.value.filter(c => c.url !== channel.url)
-    playHistory.value.unshift(channel)
+    const idx = playHistory.value.findIndex(c => c.url === channel.url)
+    if (idx === -1) {
+      playHistory.value.unshift(channel)
+    } else if (keepOrder) {
+      playHistory.value.splice(idx, 1, channel) // 原位替换
+    } else {
+      playHistory.value.splice(idx, 1)
+      playHistory.value.unshift(channel)
+    }
     if (playHistory.value.length > PLAY_HISTORY_MAX) {
       playHistory.value.length = PLAY_HISTORY_MAX
     }

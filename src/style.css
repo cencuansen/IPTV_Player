@@ -268,6 +268,22 @@ body {
   background-color: var(--bg-card-hover);
 }
 
+/* 正在播放频道所在的分组：分组头高亮（与播放中卡片同色系） */
+.group-section.playing>.group-section-header {
+  background-color: rgba(72, 187, 120, 0.15);
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
+.group-section.playing>.group-section-header .group-name {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.group-section.playing>.group-section-header .group-count {
+  background-color: rgba(72, 187, 120, 0.2);
+  color: var(--success);
+}
+
 .group-caret {
   font-size: 11px;
   color: var(--text-muted);
@@ -317,25 +333,56 @@ body {
 .group-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  /* 平铺整个横向空间：控件按自然宽度分布在整行 */
+  justify-content: space-between;
+  gap: 4px;
   padding: 8px 0 2px;
 }
 
+/* 分页控件（按钮与下拉框）统一高度、背景、边框，保证同一行观感一致 */
+.group-pagination .btn-sm,
+.group-pagination .page-select {
+  height: 22px;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
 .group-pagination .btn-sm {
-  padding: 3px 10px;
+  padding: 0 7px;
 }
 
-.group-pagination .page-btn {
-  padding: 3px 7px;
-  min-width: 24px;
-  font-size: 11px;
+.group-pagination .btn-sm:not(:disabled):hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
-.group-pagination button {
-  color: red;
-  font-weight: bold;
-  font-size: 1.2rem;
+/* 上一页 / 下一页箭头 */
+.group-pagination .page-arrow {
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* 任意页下拉框：高度与按钮一致 */
+.group-pagination .page-select {
+  min-width: 46px;
+  padding: 0 4px;
+  cursor: pointer;
+  outline: none;
+  text-align: center;
+}
+
+.group-pagination .page-select:hover,
+.group-pagination .page-select:focus {
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 /* ===== 播放器区域（最右侧，占满父级高度） ===== */
@@ -442,6 +489,7 @@ body {
 
 /* ===== 频道卡片（分组展开后的行） ===== */
 .channel-card {
+  height: 55px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -457,6 +505,12 @@ body {
 .channel-card:hover {
   background-color: var(--bg-card-hover);
   border-color: var(--accent);
+}
+
+/* 分页占位卡片：与真实卡片同结构/同高度，不可见、不可交互 */
+.channel-card-placeholder {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .channel-card.playing {
@@ -495,12 +549,26 @@ body {
   color: var(--danger-dark);
 }
 
-.channel-group {
+/* 分组信息按路径形式显示：来源导入记录 id / 频道分组，超长时省略 */
+.channel-path {
+  min-width: 0;
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.channel-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.channel-path-sep {
+  margin: 0 1px;
+  opacity: 0.6;
 }
 
 /* 频道收藏星标：默认隐藏，悬停卡片或已收藏时显示 */
@@ -555,12 +623,14 @@ body {
   background-color: var(--bg-tertiary);
 }
 
-/* 已收藏拖拽排序反馈 */
-.channel-card.drag-source {
+/* 已收藏 / 导入历史拖拽排序反馈 */
+.channel-card.drag-source,
+.history-item.drag-source {
   opacity: 0.4;
 }
 
-.channel-card.drag-target {
+.channel-card.drag-target,
+.history-item.drag-target {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
@@ -693,15 +763,58 @@ body {
   opacity: 0.85;
 }
 
+/* 弹窗底部：状态提示 + 关闭按钮同一行 */
+.history-footer {
+  align-items: center;
+}
+
+/* 恒定占位：提示显示与否都不改变底部行高度（高度取关闭按钮高度） */
+.history-status-slot {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+}
+
 .history-status {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
+  padding: 0 6px 0 12px;
   border-radius: var(--radius);
   font-size: 13px;
-  word-break: break-all;
+}
+
+/* 单行显示，超长省略；title 中保留完整文本 */
+.history-status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-status-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: inherit;
+  opacity: 0.65;
+}
+
+.history-status-close:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
 .history-status.loading {
@@ -736,6 +849,13 @@ body {
   background-color: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  /* 整行可点击（应用）且可拖动排序 */
+  cursor: pointer;
+  user-select: none;
+}
+
+.history-item:hover {
+  background-color: var(--bg-card-hover);
 }
 
 .history-item.current {
@@ -776,6 +896,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 13px;
+  font-family: Consolas, "Courier New", monospace;
+  letter-spacing: 0.2px;
 }
 
 .history-meta {

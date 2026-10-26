@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import Hls from 'hls.js'
 import TauriHttpLoader from '../player/TauriHttpLoader'
 import { getMediaType, determineHlsType, isDefinitiveHlsType, runtimeMediaType } from '../utils/mediaType'
+import { channelGroups } from '../utils/m3u'
 import { usePlayHistoryStore } from './playHistory'
 import { useFailedChannelsStore } from './failedChannels'
 
@@ -13,9 +14,10 @@ export const usePlayerStore = defineStore('player', () => {
   // 状态提示（原 setStatus 为 no-op，保留语义但不渲染）
   const status = ref('')
 
-  // now-playing 悬浮信息可见性：必须与 currentChannel 解耦——
-  // 数据切换（导入/删除）时只隐藏悬浮层，不清当前频道（视频继续播）
-  const nowPlayingVisible = ref(false)
+  // 正在播放频道的来源信息快照（播放时写入）：独立于频道列表的数据源切换，
+  // 切换导入历史后仍能显示正确的 "导入记录 id/频道分组"
+  const nowPlayingSourceId = ref('')
+  const nowPlayingGroups = ref('')
 
   // 媒体类型徽标（右上角 直播/视频）
   const badgeVisible = ref(false)
@@ -54,11 +56,6 @@ export const usePlayerStore = defineStore('player', () => {
     if (currentChannel.value) useFailedChannelsStore().markFailed(currentChannel.value)
   }
 
-  // 视频顶部悬浮显示当前播放信息；无频道时隐藏（不清 currentChannel）
-  function showNowPlaying(channel) {
-    nowPlayingVisible.value = !!channel
-  }
-
   // 视频区域顶部右侧显示媒体类型徽标；无频道时隐藏。forcedType 用于 .m3u8
   // 在清单加载后覆盖初始判断（初始按 URL 推断为直播，再按片段时间纠正）。
   function showMediaBadge(channel, forcedType) {
@@ -78,8 +75,13 @@ export const usePlayerStore = defineStore('player', () => {
     mediaTypeSettled = false
   }
 
-  function playChannel(channel) {
+  // keepHistoryOrder：从"播放历史"分组播放时不打乱历史列表顺序
+  function playChannel(channel, { keepHistoryOrder = false } = {}) {
     currentChannel.value = channel
+    // 播放时快照来源信息，之后切换导入历史/频道列表都不影响悬浮信息。
+    // 放在最前面，确保后续播放初始化失败时悬浮信息依然正确
+    nowPlayingSourceId.value = channel.sourceId || ''
+    nowPlayingGroups.value = channelGroups(channel).join(' · ')
     destroyHls() // 销毁之前的 HLS 实例
 
     const el = videoEl
@@ -143,10 +145,9 @@ export const usePlayerStore = defineStore('player', () => {
       el.play().catch(() => markPlaybackFailed())
     }
 
-    showNowPlaying(channel) // 视频顶部悬浮显示分组 + 频道
     resetMediaType() // 重置类型推断，等待新频道正常播放
     showMediaBadge(null) // 未正常播放前隐藏媒体类型徽标
-    usePlayHistoryStore().add(channel) // 记录播放历史（最新在前）
+    usePlayHistoryStore().add(channel, { keepOrder: keepHistoryOrder }) // 记录播放历史（最新在前）
   }
 
   // 视频真正开始播放后才显示直播/视频徽标（播放失败/未播放时保持隐藏）。
@@ -181,10 +182,10 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   return {
-    currentChannel, status, nowPlayingVisible,
+    currentChannel, status, nowPlayingSourceId, nowPlayingGroups,
     badgeVisible, badgeText, badgeIsLive,
     setVideoElement, setStatus, playChannel,
     onVideoPlaying, onVideoDurationChange, onVideoEnded, onVideoError,
-    showNowPlaying, showMediaBadge, resetMediaType,
+    showMediaBadge, resetMediaType,
   }
 })

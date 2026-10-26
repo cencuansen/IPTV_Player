@@ -91,6 +91,12 @@ export const useChannelsStore = defineStore('channels', () => {
     else expanded.value.add(groupName)
   }
 
+  // 折叠所有分组（程序启动时使用）
+  function collapseAll() {
+    expanded.value = new Set()
+    preSearchExpanded = null
+  }
+
   // 切换某分组页码
   function goToGroupPage(groupName, page) {
     groupPages.value[groupName] = page
@@ -100,6 +106,6 @@ export const useChannelsStore = defineStore('channels', () => {
     channels, expanded, groupPages, searchKeyword, pageSize,
     groupMap, groups,
     matchesSearch, getGroupChannels, setChannels, setSearchKeyword,
-    toggleGroup, goToGroupPage,
+    toggleGroup, collapseAll, goToGroupPage,
   }
 })

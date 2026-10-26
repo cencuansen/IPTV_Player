@@ -1,15 +1,36 @@
 // ===== M3U 解析器 =====
+// 兼容标准 M3U/M3U8 与常见 TXT 播放列表（扩展名不代表内容格式）：
+//  - 标准写法：#EXTM3U + #EXTINF: 属性行 + 下一行频道地址
+//  - #EXTGRP:分组 指定后续频道的分组
+//  - TXT 分类行：如 "央视,#genre#"
+//  - TXT 条目行：如 "CCTV1,http://example.com/a.m3u8"（多个备用地址用 # 分隔，取第一个）
 export function parseM3U(content) {
-  const lines = content.split('\n')
+  const lines = String(content || '').replace(/^\uFEFF/, '').split(/\r?\n/)
   const channels = []
   let currentChannel = null
+  // TXT 分类 / #EXTGRP 指定的分组，供后续条目使用
+  let currentGroup = ''
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
+    if (!line) continue
 
-    if (line.startsWith('#EXTINF:')) {
+    // TXT 分类标记（如 "央视,#genre#"）
+    const genre = /^(.*?)\s*[,，]\s*#genre#\s*$/i.exec(line)
+    if (genre) {
+      currentGroup = genre[1].trim()
+      continue
+    }
+
+    // 独立分组行 #EXTGRP:分组
+    if (/^#EXTGRP\s*:/i.test(line)) {
+      currentGroup = line.slice(line.indexOf(':') + 1).trim()
+      continue
+    }
+
+    if (/^#EXTINF\s*:/i.test(line)) {
       // 解析 EXTINF 行
-      const info = line.substring(8)
+      const info = line.slice(line.indexOf(':') + 1)
       const commaIndex = info.lastIndexOf(',')
       const name = commaIndex > -1 ? info.substring(commaIndex + 1).trim() : '未知频道'
 
@@ -24,7 +45,8 @@ export function parseM3U(content) {
 
       // group-title 可能用多种分隔符表示多个分组，拆成数组
       // （如 "体育,央视"、"体育;央视"、"体育，央视"、"体育|央视" → ['体育','央视']）
-      const rawGroup = attrs['group-title'] || '未分组'
+      // 未声明 group-title 时沿用前面的分类（TXT 列表常见）
+      const rawGroup = attrs['group-title'] || currentGroup || '未分组'
       const groups = splitGroups(rawGroup)
 
       currentChannel = {
@@ -34,15 +56,46 @@ export function parseM3U(content) {
         group: groups[0] || '未分组', // 主分组（用于卡片展示，兼容旧数据）
         url: '',
       }
-    } else if (line && !line.startsWith('#') && currentChannel) {
-      // URL 行
+    } else if (line.startsWith('#')) {
+      // 其他标记行（#EXTM3U、#EXTVLCOPT 等）忽略
+      continue
+    } else if (currentChannel) {
+      // 标准 M3U：上一条 #EXTINF 之后的行是频道地址
       currentChannel.url = line
       channels.push(currentChannel)
       currentChannel = null
+    } else {
+      // TXT 列表：名称,地址（单行条目，无 #EXTINF）
+      const ch = parseTxtEntry(line, currentGroup)
+      if (ch) channels.push(ch)
     }
   }
 
   return channels
+}
+
+// 流地址（协议 + 直到空白），用于识别 TXT 单行条目中的地址部分
+const STREAM_URL_RE = /(?:https?|rtsp|rtmps?|rtp|udp|mms|p3p|file):\/\/\S+/i
+
+// 解析 TXT 单行条目："频道名,http://..." / "频道名|rtsp://..."。
+// 裸地址行（行首即地址、无频道名）不作为频道，避免误收垃圾行。
+function parseTxtEntry(line, currentGroup) {
+  const m = STREAM_URL_RE.exec(line)
+  if (!m || m.index === 0) return null
+
+  const name = line.slice(0, m.index).replace(/[,，|]\s*$/, '').trim()
+  // 同一频道可能有多个源，常用 # 分隔，取第一个
+  const url = m[0].split('#')[0].trim()
+  if (!url) return null
+
+  const group = currentGroup || '未分组'
+  return {
+    name: name || '未知频道',
+    logo: '',
+    groups: [group],
+    group,
+    url,
+  }
 }
 
 // 按多种分隔符拆分分组字符串（半角/全角逗号、分号、竖线）
